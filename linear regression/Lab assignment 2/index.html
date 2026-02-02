@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lab Assignment 2 - Learning Rate Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+</head>
+<body>
+
+<h2>Lab Assignment 2: Learning Rate Experiment</h2>
+<button onclick="runExperiment()">Run Experiment</button>
+
+<script>
+
+async function trainWithLR(lr) {
+
+    const xs = tf.tensor2d([1,2,3,4,5], [5,1]);
+    const ys = tf.tensor2d([3,5,7,9,11], [5,1]);
+
+    const model = tf.sequential();
+    model.add(tf.layers.dense({units:1, inputShape:[1]}));
+
+    model.compile({
+        optimizer: tf.train.sgd(lr),
+        loss: 'meanSquaredError'
+    });
+
+    let finalLoss;
+
+    await model.fit(xs, ys, {
+        epochs: 200,
+        callbacks: {
+            onEpochEnd: (epoch, logs) => {
+                if (epoch === 199) {
+                    finalLoss = logs.loss;
+                }
+            }
+        }
+    });
+
+    return finalLoss;
+}
+
+async function runExperiment() {
+
+    console.clear();
+    console.log("Learning Rate Experiment");
+
+    const learningRates = [0.5, 0.1, 0.01, 0.001];
+
+    for (let lr of learningRates) {
+        const loss = await trainWithLR(lr);
+        console.log(`Learning Rate: ${lr} → Final Loss: ${loss}`);
+    }
+
+    console.log("Observe how large LR may diverge and small LR converges slowly.");
+}
+
+</script>
+
+</body>
+</html>
