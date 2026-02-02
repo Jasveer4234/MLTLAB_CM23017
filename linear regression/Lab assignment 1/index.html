@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lab Assignment 1 - Linear Regression</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+</head>
+<body>
+
+<h2>Lab Assignment 1: Train Model & Plot Predicted vs Actual</h2>
+<button onclick="trainModel()">Train Model</button>
+
+<canvas id="chart" width="400" height="300"></canvas>
+
+<script>
+
+async function trainModel() {
+
+    // Synthetic Data: y = 2x + 1
+    const xs = tf.tensor2d([1,2,3,4,5], [5,1]);
+    const ys = tf.tensor2d([3,5,7,9,11], [5,1]);
+
+    // Build model
+    const model = tf.sequential();
+    model.add(tf.layers.dense({units:1, inputShape:[1]}));
+
+    model.compile({
+        optimizer: tf.train.sgd(0.01),
+        loss: 'meanSquaredError'
+    });
+
+    await model.fit(xs, ys, {epochs:300});
+
+    const predictions = model.predict(xs);
+
+    const actual = ys.dataSync();
+    const predicted = predictions.dataSync();
+
+    console.log("Actual:", actual);
+    console.log("Predicted:", predicted);
+
+    drawChart(actual, predicted);
+}
+
+function drawChart(actual, predicted) {
+
+    const canvas = document.getElementById("chart");
+    const ctx = canvas.getContext("2d");
+
+    ctx.clearRect(0,0,400,300);
+
+    ctx.beginPath();
+    ctx.strokeStyle = "blue";
+
+    for (let i=0; i<actual.length; i++) {
+        ctx.lineTo(i*60+30, 300 - actual[i]*20);
+    }
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.strokeStyle = "red";
+
+    for (let i=0; i<predicted.length; i++) {
+        ctx.lineTo(i*60+30, 300 - predicted[i]*20);
+    }
+    ctx.stroke();
+
+    ctx.fillText("Blue = Actual", 10, 15);
+    ctx.fillText("Red = Predicted", 10, 30);
+}
+
+</script>
+
+</body>
+</html>
