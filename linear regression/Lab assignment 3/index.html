@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lab Assignment 3 - Unseen Predictions</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+</head>
+<body>
+
+<h2>Lab Assignment 3: Predict Unseen Inputs</h2>
+<button onclick="runPrediction()">Train & Predict</button>
+
+<script>
+
+async function runPrediction() {
+
+    // Training Data (y = 2x + 1)
+    const xs = tf.tensor2d([1,2,3,4,5], [5,1]);
+    const ys = tf.tensor2d([3,5,7,9,11], [5,1]);
+
+    // Build model
+    const model = tf.sequential();
+    model.add(tf.layers.dense({units:1, inputShape:[1]}));
+
+    model.compile({
+        optimizer: tf.train.sgd(0.01),
+        loss: 'meanSquaredError'
+    });
+
+    await model.fit(xs, ys, {epochs:300});
+
+    console.clear();
+    console.log("Unseen Input Prediction Analysis");
+
+    // Unseen Inputs
+    const unseenInputs = [6, 7, 10, 12];
+
+    for (let x of unseenInputs) {
+
+        const inputTensor = tf.tensor2d([x], [1,1]);
+        const prediction = model.predict(inputTensor);
+        const predictedValue = prediction.dataSync()[0];
+
+        const expectedValue = 2*x + 1;
+
+        console.log(`Input: ${x}`);
+        console.log(`Expected: ${expectedValue}`);
+        console.log(`Predicted: ${predictedValue.toFixed(2)}`);
+        console.log(`Error: ${(predictedValue - expectedValue).toFixed(2)}`);
+        console.log("----------------------------");
+    }
+}
+
+</script>
+
+</body>
+</html>
