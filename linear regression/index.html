@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Linear Regression with TensorFlow.js</title>
+
+    <!-- TensorFlow.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            padding: 30px;
+        }
+        h2 {
+            color: #333;
+        }
+        input, button {
+            padding: 8px;
+            margin: 5px 0;
+        }
+        #output {
+            margin-top: 15px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Linear Regression (Synthetic Data)</h2>
+
+<button onclick="trainModel()">Train Model</button>
+
+<br><br>
+
+<label>Enter X value:</label><br>
+<input type="number" id="xValue" placeholder="Enter x">
+<button onclick="predict()">Predict Y</button>
+
+<div id="output"></div>
+
+<script>
+
+let model;
+
+async function trainModel() {
+
+    // 1. Create synthetic data
+    const xs = tf.tensor2d([1, 2, 3, 4, 5], [5, 1]);
+    const ys = tf.tensor2d([3, 5, 7, 9, 11], [5, 1]); // y = 2x + 1
+
+    // 2. Build the model
+    model = tf.sequential();
+    model.add(tf.layers.dense({
+        units: 1,
+        inputShape: [1]
+    }));
+
+    // 3. Compile the model
+    model.compile({
+        optimizer: tf.train.sgd(0.001),
+        loss: 'meanSquaredError'
+    });
+
+    // 4. Train the model
+    await model.fit(xs, ys, {
+        epochs: 200,
+        callbacks: {
+            onEpochEnd: (epoch, logs) => {
+                if (epoch % 50 === 0) {
+                    console.log(Epoch ${epoch}: loss = ${logs.loss});
+                }
+            }
+        }
+    });
+
+    document.getElementById("output").innerText =
+        "Model trained successfully!";
+}
+
+function predict() {
+
+    const x = Number(document.getElementById("xValue").value);
+
+    if (!model) {
+        alert("Please train the model first!");
+        return;
+    }
+
+    const inputTensor = tf.tensor2d([x], [1, 1]);
+    const prediction = model.predict(inputTensor);
+
+    prediction.array().then(value => {
+        document.getElementById("output").innerText =
+            Predicted value for x = ${x} is y = ${value[0][0].toFixed(2)};
+    });
+}
+
+</script>
+
+</body>
+</html>
