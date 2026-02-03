@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>LabAssignment2 - Draw & Classify (Real MNIST)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.16.0/dist/tf.min.js"></script>
+    <style>
+        canvas {
+            border: 2px solid black;
+            cursor: crosshair;
+        }
+    </style>
+</head>
+<body>
+
+<h2>LabAssignment2: Draw Digit & Classify (5000 MNIST Samples)</h2>
+
+<button onclick="trainModel()">Train Model (5 Epochs)</button>
+<br><br>
+
+<canvas id="canvas" width="280" height="280"></canvas>
+<br><br>
+<button onclick="clearCanvas()">Clear</button>
+<button onclick="predict()">Predict</button>
+
+<h3 id="result"></h3>
+
+<script>
+
+let model;
+let isDrawing = false;
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+ctx.fillStyle = "black";
+ctx.fillRect(0,0,canvas.width,canvas.height);
+
+ctx.strokeStyle = "white";
+ctx.lineWidth = 12;
+ctx.lineCap = "round";
+
+canvas.addEventListener("mousedown", () => isDrawing = true);
+canvas.addEventListener("mouseup", () => {
+    isDrawing = false;
+    ctx.beginPath();
+});
+canvas.addEventListener("mousemove", draw);
+
+function draw(event) {
+    if (!isDrawing) return;
+    ctx.lineTo(event.offsetX, event.offsetY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(event.offsetX, event.offsetY);
+}
+
+function clearCanvas() {
+    ctx.fillStyle = "black";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.beginPath();
+    document.getElementById("result").innerText = "";
+}
+
+async function loadMnistData() {
+
+    const MNIST_IMAGES_PATH =
+        'https://storage.googleapis.com/learnjs-data/model-builder/mnist_images.png';
+    const MNIST_LABELS_PATH =
+        'https://storage.googleapis.com/learnjs-data/model-builder/mnist_labels_uint8';
+
+    const imgRequest = await fetch(MNIST_IMAGES_PATH);
+    const imgBlob = await imgRequest.blob();
+    const img = await createImageBitmap(imgBlob);
+
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+
+    tempCanvas.width = img.width;
+    tempCanvas.height = img.height;
+    tempCtx.drawImage(img, 0, 0);
+
+    const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
+    const numImages = 5000;
+
+    const images = new Float32Array(numImages * 28 * 28);
+
+    for (let i = 0; i < numImages * 28 * 28; i++) {
+        images[i] = imageData.data[i * 4] / 255;
+    }
+
+    const labelsRequest = await fetch(MNIST_LABELS_PATH);
+    const labels = new Uint8Array(await labelsRequest.arrayBuffer());
+
+    return {
+        xs: tf.tensor4d(images, [numImages, 28, 28, 1]),
+        ys: tf.oneHot(tf.tensor1d(labels.slice(0, numImages), 'int32'), 10)
+    };
+}
+
+async function trainModel() {
+
+    document.getElementById("result").innerText = "Training... Please wait.";
+
+    const {xs, ys} = await loadMnistData();
+
+    model = tf.sequential();
+
+    model.add(tf.layers.conv2d({
+        inputShape: [28,28,1],
+        filters: 16,
+        kernelSize: 3,
+        activation: 'relu'
+    }));
+
+    model.add(tf.layers.maxPooling2d({poolSize: 2}));
+
+    model.add(tf.layers.flatten());
+
+    model.add(tf.layers.dense({units: 64, activation: 'relu'}));
+
+    model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
+
+    model.compile({
+        optimizer: 'adam',
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
+    });
+
+    await model.fit(xs, ys, {
+        epochs: 5,
+        batchSize: 64,
+        callbacks: {
+            onEpochEnd: (epoch, logs) => {
+                console.log(
+                    `Epoch ${epoch+1}: Loss=${logs.loss.toFixed(4)}, Accuracy=${(logs.acc*100).toFixed(2)}%`
+                );
+            }
+        }
+    });
+
+    document.getElementById("result").innerText = "Training Complete!";
+}
+
+function preprocessCanvas() {
+
+    const imageData = ctx.getImageData(0,0,280,280);
+    const data = imageData.data;
+
+    const grayscale = [];
+
+    for (let i=0; i<data.length; i+=4) {
+        grayscale.push(1 - (data[i] / 255));
+    }
+
+    let tensor = tf.tensor(grayscale, [280,280,1]);
+tensor = tf.image.resizeBilinear(tensor, [28,28]);
+    tensor = tensor.expandDims(0);
+
+    return tensor;
+}
+
+function predict() {
+
+    if (!model) {
+        alert("Please train the model first!");
+        return;
+    }
+
+    const tensor = preprocessCanvas();
+    const prediction = model.predict(tensor);
+    const digit = prediction.argMax(-1).dataSync()[0];
+
+    document.getElementById("result").innerText =
+        "Predicted Digit: " + digit;
+}
+
+</script>
+
+</body>
+</html>
