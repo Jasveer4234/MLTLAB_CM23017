@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>LabAssignment1 - MNIST CNN (5 Epochs)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.16.0/dist/tf.min.js"></script>
+</head>
+<body>
+
+<h2>LabAssignment1: MNIST CNN Training (5 Epochs)</h2>
+<p>Check console (F12) for accuracy logs.</p>
+
+<script>
+
+async function loadMnistData() {
+    const MNIST_IMAGES_PATH =
+        'https://storage.googleapis.com/learnjs-data/model-builder/mnist_images.png';
+    const MNIST_LABELS_PATH =
+        'https://storage.googleapis.com/learnjs-data/model-builder/mnist_labels_uint8';
+
+    const imgRequest = await fetch(MNIST_IMAGES_PATH);
+    const imgBlob = await imgRequest.blob();
+    const img = await createImageBitmap(imgBlob);
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    const numImages = 5000;  // Reduced dataset
+    const images = new Float32Array(numImages * 28 * 28);
+
+    for (let i = 0; i < numImages * 28 * 28; i++) {
+        images[i] = imageData.data[i * 4] / 255;
+    }
+
+    const labelsRequest = await fetch(MNIST_LABELS_PATH);
+    const labels = new Uint8Array(await labelsRequest.arrayBuffer());
+
+    return {
+        xs: tf.tensor4d(images, [numImages, 28, 28, 1]),
+        ys: tf.oneHot(tf.tensor1d(labels.slice(0, numImages), 'int32'), 10)
+    };
+}
+
+async function run() {
+
+    console.log("Loading MNIST data...");
+    const {xs, ys} = await loadMnistData();
+
+    console.log("Building CNN model...");
+
+    const model = tf.sequential();
+
+    model.add(tf.layers.conv2d({
+        inputShape: [28,28,1],
+        filters: 16,
+        kernelSize: 3,
+        activation: 'relu'
+    }));
+
+    model.add(tf.layers.maxPooling2d({poolSize: 2}));
+
+    model.add(tf.layers.flatten());
+
+    model.add(tf.layers.dense({units: 64, activation: 'relu'}));
+
+    model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
+
+    model.compile({
+        optimizer: 'adam',
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
+    });
+
+    console.log("Training for 5 epochs...");
+
+    await model.fit(xs, ys, {
+        epochs: 5,
+        batchSize: 64,
+        callbacks: {
+            onEpochEnd: (epoch, logs) => {
+                console.log(
+                    `Epoch ${epoch+1}: Loss=${logs.loss.toFixed(4)}, Accuracy=${(logs.acc*100).toFixed(2)}%`
+                );
+            }
+        }
+    });
+
+    console.log("Training Complete (5 Epochs)");
+
+}
+
+run();
+
+</script>
+
+</body>
+</html>
