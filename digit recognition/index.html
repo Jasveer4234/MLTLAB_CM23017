@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MNIST CNN Browser Training (Demo)</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.16.0/dist/tf.min.js"></script>
+</head>
+<body>
+
+<h2>MNIST CNN Training (Browser Demo)</h2>
+<p>This is a demo CNN using random MNIST-like data.</p>
+<p>Check console (F12) for logs.</p>
+
+<script>
+(async () => {
+
+  console.log("Creating CNN model...");
+
+  const model = tf.sequential();
+
+  model.add(tf.layers.conv2d({
+    inputShape: [28,28,1],
+    filters: 16,
+    kernelSize: 3,
+    activation: 'relu'
+  }));
+
+  model.add(tf.layers.maxPooling2d({poolSize: 2}));
+
+  model.add(tf.layers.flatten());
+
+  model.add(tf.layers.dense({
+    units: 64,
+    activation: 'relu'
+  }));
+
+  model.add(tf.layers.dense({
+    units: 10,
+    activation: 'softmax'
+  }));
+
+  model.compile({
+    optimizer: 'adam',
+    loss: 'categoricalCrossentropy',
+    metrics: ['accuracy']
+  });
+
+  console.log("Generating dummy MNIST-like data...");
+
+  const numClasses = 10;
+  const samplesPerClass = 10;
+  const numSamples = numClasses * samplesPerClass;
+
+  const xs = tf.randomUniform([numSamples,28,28,1]);
+
+  const labelsArray = [...Array(numClasses).keys()]
+      .flatMap(i => Array(samplesPerClass).fill(i));
+
+  const ys = tf.oneHot(
+      tf.tensor1d(labelsArray, 'int32'),
+      10
+  );
+
+  console.log("Training CNN...");
+
+  await model.fit(xs, ys, {
+    epochs: 3,
+    batchSize: 16,
+    callbacks: {
+      onEpochEnd: (epoch, logs) => {
+        console.log(
+          `Epoch ${epoch+1}: loss=${logs.loss.toFixed(4)}, accuracy=${(logs.acc * 100).toFixed(2)}%`
+        );
+      }
+    }
+  });
+
+  console.log("Predicting a random sample...");
+
+  const sample = tf.randomUniform([1,28,28,1]);
+  const prediction = model.predict(sample).argMax(-1).dataSync()[0];
+
+  console.log("Predicted class (random demo data):", prediction);
+
+})();
+</script>
+
+</body>
+</html>
