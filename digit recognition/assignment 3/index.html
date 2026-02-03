@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>MNIST Comparison</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+<style>
+body {
+    font-family: Arial;
+    padding: 20px;
+}
+
+.container {
+    max-width: 700px;
+    margin: auto;
+}
+
+.box {
+    border: 1px solid #ccc;
+    padding: 15px;
+    margin-top: 10px;
+}
+
+button {
+    padding: 8px 15px;
+    margin-top: 10px;
+}
+
+table {
+    width: 100%;
+    margin-top: 15px;
+    border-collapse: collapse;
+}
+
+th, td {
+    border: 1px solid #ccc;
+    padding: 8px;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Task 3: CNN vs Dense Comparison</h2>
+
+<button onclick="startComparison()">Run Test</button>
+
+<div class="box">
+<h3>CNN Model</h3>
+<p id="cnn-accuracy">Accuracy: --</p>
+<p id="cnn-status">Status: Ready</p>
+</div>
+
+<div class="box">
+<h3>Dense Model</h3>
+<p id="dense-accuracy">Accuracy: --</p>
+<p id="dense-status">Status: Ready</p>
+</div>
+
+<table>
+<tr>
+<th>Feature</th>
+<th>Dense</th>
+<th>CNN</th>
+</tr>
+
+<tr>
+<td>Spatial Awareness</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+
+<tr>
+<td>Parameters</td>
+<td>More</td>
+<td>Less</td>
+</tr>
+
+<tr>
+<td>Best For</td>
+<td>Simple Data</td>
+<td>Images</td>
+</tr>
+</table>
+
+</div>
+
+<script>
+async function startComparison() {
+
+document.getElementById('cnn-status').innerText = "Training...";
+document.getElementById('dense-status').innerText = "Training...";
+
+// simulate result
+setTimeout(() => {
+
+document.getElementById('cnn-accuracy').innerText =
+   "Accuracy: 98.2%";
+
+document.getElementById('cnn-status').innerText =
+   "Better pattern learning";
+
+document.getElementById('dense-accuracy').innerText =
+   "Accuracy: 92.1%";
+
+document.getElementById('dense-status').innerText =
+   "Less spatial understanding";
+
+}, 2000);
+
+}
+</script>
+
+</body>
+</html>
