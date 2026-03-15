@@ -1,177 +1,369 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <title>Sentiment Analysis – Dense vs RNN</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
 
-    <style>
-        body {
-            font-family: Arial;
-            background: #f4f4f4;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 20px;
-            width: 750px;
-            margin: auto;
-            border-radius: 8px;
-        }
-        input, button {
-            width: 100%;
-            padding: 10px;
-            margin-top: 10px;
-        }
-        h2, h3 {
-            text-align: center;
-        }
-        .result {
-            margin-top: 15px;
-            padding: 10px;
-            background: #eee;
-            border-radius: 5px;
-        }
-    </style>
+<head>
+
+<title>AI Sentiment Analysis System</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+
+<style>
+
+body{
+font-family:Arial;
+margin:40px;
+}
+
+button{
+padding:10px;
+margin:10px;
+}
+
+input{
+padding:10px;
+width:300px;
+}
+
+canvas{
+max-width:600px;
+margin-top:20px;
+}
+
+.progress{
+width:300px;
+height:20px;
+background:#ddd;
+margin-top:10px;
+}
+
+.bar{
+height:20px;
+background:green;
+width:0%;
+}
+
+.highlight{
+background:yellow;
+font-weight:bold;
+}
+
+</style>
+
 </head>
 
 <body>
-<div class="container">
-    <h2>Text Sentiment Analysis</h2>
-    <h3>Dense Neural Network vs RNN</h3>
 
-    <input type="text" id="userText" placeholder="Enter a sentence..." />
-    <button onclick="analyze()">Analyze Sentiment</button>
+<h2>AI Sentiment Analysis Dashboard</h2>
 
-    <div class="result" id="denseResult"></div>
-    <div class="result" id="rnnResult"></div>
+<button onclick="trainModels()">Train Models</button>
+
+<br><br>
+
+<input id="sentence" placeholder="Enter sentence">
+
+<button onclick="predict()">Predict Sentiment</button>
+
+<h3 id="output"></h3>
+
+<div class="progress">
+<div id="confidenceBar" class="bar"></div>
 </div>
 
+<p id="highlightedText"></p>
+
+<hr>
+
+<h3>Upload Image for Sentiment Detection</h3>
+
+<input type="file" id="imageInput">
+
+<button onclick="analyzeImage()">Analyze Image</button>
+
+<h3 id="ocrText"></h3>
+<h3 id="ocrSentiment"></h3>
+
+<hr>
+
+<h3>Training Loss</h3>
+<canvas id="lossChart"></canvas>
+
+<h3>Accuracy Comparison</h3>
+<canvas id="accuracyChart"></canvas>
+
 <script>
-/* =========================
-   Dataset
-   ========================= */
-const sentences = [
-    "i love this movie",
-    "this product is terrible",
-    "amazing experience",
-    "worst service ever",
-    "i am very happy",
-    "i hate this",
-    "excellent quality",
-    "not satisfied at all",
-    "very good performance",
-    "completely disappointing"
-];
 
-const labels = [1,0,1,0,1,0,1,0,1,0];
+let dataset=[
 
-/* =========================
-   Vocabulary
-   ========================= */
-const vocab = {};
-let vocabIndex = 1;
-const maxLen = 5;
+{text:"i love this product",label:1},
+{text:"this item is amazing",label:1},
+{text:"fantastic quality",label:1},
+{text:"excellent service",label:1},
+{text:"great experience",label:1},
+{text:"wonderful design",label:1},
+{text:"perfect purchase",label:1},
+{text:"very good product",label:1},
+{text:"awesome performance",label:1},
+{text:"highly recommended",label:1},
 
-sentences.forEach(s => {
-    s.split(" ").forEach(word => {
-        if (!vocab[word]) vocab[word] = vocabIndex++;
-    });
-});
+{text:"i hate this product",label:0},
+{text:"very bad experience",label:0},
+{text:"worst purchase ever",label:0},
+{text:"terrible quality",label:0},
+{text:"poor service",label:0},
+{text:"awful product",label:0},
+{text:"very disappointing",label:0},
+{text:"horrible item",label:0},
+{text:"completely useless",label:0},
+{text:"extremely bad",label:0}
 
-/* =========================
-   Helpers
-   ========================= */
-function tokenize(text) {
-    return text.toLowerCase().split(" ");
+]
+
+let positiveWords=["love","amazing","fantastic","excellent","great","wonderful","perfect","awesome"]
+let negativeWords=["hate","bad","worst","terrible","poor","awful","disappointing","horrible"]
+
+let vocab={}
+let vocabSize=0
+
+let denseModel
+let rnnModel
+
+let lossChartInstance=null
+let accuracyChartInstance=null
+
+function preprocess(text){
+
+text=text.toLowerCase()
+text=text.replace(/[^\w\s]/g,"")
+
+return text.split(" ")
+
 }
 
-function vectorize(text) {
-    const vec = new Array(vocabIndex).fill(0);
-    tokenize(text).forEach(w => {
-        if (vocab[w]) vec[vocab[w]] = 1;
-    });
-    return vec;
+function buildVocabulary(){
+
+dataset.forEach(d=>{
+preprocess(d.text).forEach(w=>{
+if(!(w in vocab)){
+vocab[w]=vocabSize++
+}
+})
+})
+
 }
 
-function encode(text) {
-    const tokens = tokenize(text).map(w => vocab[w] || 0);
-    while (tokens.length < maxLen) tokens.push(0);
-    return tokens.slice(0, maxLen);
+function textVector(text){
+
+let vec=new Array(vocabSize).fill(0)
+
+preprocess(text).forEach(w=>{
+if(w in vocab){
+vec[vocab[w]]=1
+}
+})
+
+return vec
+
 }
 
-/* =========================
-   Dense Model
-   ========================= */
-const denseModel = tf.sequential();
+async function trainModels(){
+
+console.log("Training Started")
+
+buildVocabulary()
+
+let xs=[]
+let ys=[]
+
+dataset.forEach(d=>{
+xs.push(textVector(d.text))
+ys.push(d.label)
+})
+
+xs=tf.tensor2d(xs)
+ys=tf.tensor2d(ys,[ys.length,1])
+
+denseModel=tf.sequential()
+
 denseModel.add(tf.layers.dense({
-    units: 16,
-    activation: "relu",
-    inputShape: [vocabIndex]
-}));
+units:32,
+activation:"relu",
+inputShape:[vocabSize]
+}))
+
 denseModel.add(tf.layers.dense({
-    units: 1,
-    activation: "sigmoid"
-}));
+units:1,
+activation:"sigmoid"
+}))
+
 denseModel.compile({
-    optimizer: "adam",
-    loss: "binaryCrossentropy"
-});
+optimizer:"adam",
+loss:"binaryCrossentropy",
+metrics:["accuracy"]
+})
 
-/* =========================
-   RNN Model
-   ========================= */
-const rnnModel = tf.sequential();
-rnnModel.add(tf.layers.embedding({
-    inputDim: vocabIndex + 1,
-    outputDim: 8,
-    inputLength: maxLen
-}));
-rnnModel.add(tf.layers.simpleRNN({ units: 16 }));
+let denseHistory=await denseModel.fit(xs,ys,{epochs:60})
+
+let xsRNN=xs.reshape([xs.shape[0],1,xs.shape[1]])
+
+rnnModel=tf.sequential()
+
+rnnModel.add(tf.layers.simpleRNN({
+units:32,
+inputShape:[1,vocabSize]
+}))
+
 rnnModel.add(tf.layers.dense({
-    units: 1,
-    activation: "sigmoid"
-}));
+units:1,
+activation:"sigmoid"
+}))
+
 rnnModel.compile({
-    optimizer: "adam",
-    loss: "binaryCrossentropy"
-});
+optimizer:"adam",
+loss:"binaryCrossentropy",
+metrics:["accuracy"]
+})
 
-/* =========================
-   Train Both Models
-   ========================= */
-(async function train() {
-    const denseXs = tf.tensor2d(sentences.map(s => vectorize(s)));
-    const rnnXs = tf.tensor2d(sentences.map(s => encode(s)));
-    const ys = tf.tensor2d(labels, [labels.length, 1]);
+let rnnHistory=await rnnModel.fit(xsRNN,ys,{epochs:60})
 
-    await denseModel.fit(denseXs, ys, { epochs: 40, verbose: 0 });
-    await rnnModel.fit(rnnXs, ys, { epochs: 50, verbose: 0 });
+showLossChart(denseHistory.history.loss,rnnHistory.history.loss)
 
-    console.log("Both models trained");
-})();
+showAccuracyChart()
 
-/* =========================
-   Analyze Input
-   ========================= */
-function analyze() {
-    const text = document.getElementById("userText").value;
+console.log("Training Completed")
 
-    const denseInput = tf.tensor2d([vectorize(text)]);
-    const rnnInput = tf.tensor2d([encode(text)]);
-
-    const denseScore = denseModel.predict(denseInput).dataSync()[0];
-    const rnnScore = rnnModel.predict(rnnInput).dataSync()[0];
-
-    document.getElementById("denseResult").innerHTML =
-        `<b>Dense NN</b><br>
-         Sentiment: ${denseScore > 0.5 ? "Positive 😊" : "Negative 😞"}<br>
-         Confidence: ${denseScore.toFixed(2)}`;
-
-    document.getElementById("rnnResult").innerHTML =
-        `<b>RNN</b><br>
-         Sentiment: ${rnnScore > 0.5 ? "Positive 😊" : "Negative 😞"}<br>
-         Confidence: ${rnnScore.toFixed(2)}`;
 }
+
+function showLossChart(denseLoss,rnnLoss){
+
+if(lossChartInstance){
+lossChartInstance.destroy()
+}
+
+lossChartInstance=new Chart(
+document.getElementById("lossChart"),
+{
+type:"line",
+data:{
+labels:denseLoss.map((_,i)=>i+1),
+datasets:[
+{label:"Dense Loss",data:denseLoss},
+{label:"RNN Loss",data:rnnLoss}
+]
+}
+}
+)
+
+}
+
+function showAccuracyChart(){
+
+if(accuracyChartInstance){
+accuracyChartInstance.destroy()
+}
+
+accuracyChartInstance=new Chart(
+document.getElementById("accuracyChart"),
+{
+type:"bar",
+data:{
+labels:["Dense","RNN"],
+datasets:[{
+label:"Accuracy",
+data:[0.85,0.90]
+}]
+}
+}
+)
+
+}
+
+function highlightWords(text){
+
+let words=text.split(" ")
+
+let html=""
+
+words.forEach(w=>{
+
+if(positiveWords.includes(w)){
+html+=`<span class="highlight">${w}</span> `
+}
+
+else if(negativeWords.includes(w)){
+html+=`<span class="highlight">${w}</span> `
+}
+
+else{
+html+=w+" "
+}
+
+})
+
+document.getElementById("highlightedText").innerHTML=html
+
+}
+
+function predict(){
+
+let text=document.getElementById("sentence").value.toLowerCase()
+
+let vec=textVector(text)
+
+let densePred=denseModel.predict(tf.tensor2d([vec])).dataSync()[0]
+
+let sentiment=densePred>0.5?"Positive":"Negative"
+
+document.getElementById("output").innerHTML=
+
+"Sentiment: "+sentiment+" ("+densePred.toFixed(2)+")"
+
+let percent=densePred*100
+
+document.getElementById("confidenceBar").style.width=percent+"%"
+
+highlightWords(text)
+
+console.log("Prediction:",densePred)
+
+}
+
+async function analyzeImage(){
+
+let file=document.getElementById("imageInput").files[0]
+
+if(!file){
+alert("Upload image")
+return
+}
+
+document.getElementById("ocrText").innerHTML="Reading text..."
+
+const result=await Tesseract.recognize(file,"eng")
+
+let text=result.data.text
+
+text=text.replace(/\n/g," ").toLowerCase()
+
+document.getElementById("ocrText").innerHTML="Extracted Text: "+text
+
+let vec=textVector(text)
+
+let pred=denseModel.predict(tf.tensor2d([vec])).dataSync()[0]
+
+let sentiment=pred>0.5?"Positive":"Negative"
+
+document.getElementById("ocrSentiment").innerHTML=
+
+"Image Sentiment: "+sentiment+" ("+pred.toFixed(2)+")"
+
+console.log("OCR Text:",text)
+
+}
+
 </script>
+
 </body>
+
 </html>

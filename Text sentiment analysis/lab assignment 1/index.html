@@ -1,151 +1,277 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-    <title>Text Sentiment Analysis</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
-    <style>
-        body {
-            font-family: Arial;
-            background: #f4f4f4;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 20px;
-            width: 600px;
-            margin: auto;
-            border-radius: 8px;
-        }
-        input, button {
-            width: 100%;
-            padding: 10px;
-            margin-top: 10px;
-        }
-        h2 {
-            text-align: center;
-        }
-        #result {
-            margin-top: 15px;
-            font-weight: bold;
-        }
-    </style>
+<title>Advanced Sentiment Analysis Trainer</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{
+font-family:Arial;
+margin:40px;
+}
+
+button{
+padding:10px;
+margin:5px;
+}
+
+input{
+padding:8px;
+width:250px;
+}
+
+</style>
+
 </head>
 
 <body>
-<div class="container">
-    <h2>Text Sentiment Analysis</h2>
 
-    <p><b>Model:</b> Dense Neural Network (TensorFlow.js)</p>
+<h2>Sentiment Analysis Model Training</h2>
 
-    <input type="text" id="userText" placeholder="Enter a sentence..." />
-    <button onclick="predictSentiment()">Analyze Sentiment</button>
+<button onclick="trainModel()">Train Model</button>
 
-    <div id="result"></div>
-</div>
+<h3 id="status"></h3>
+
+<canvas id="chart" width="600" height="300"></canvas>
+
+<hr>
+
+<h3>Test Sentiment</h3>
+
+<input id="sentence" placeholder="Enter sentence">
+<button onclick="predict()">Predict</button>
+
+<h3 id="prediction"></h3>
 
 <script>
-/* =========================
-   Dataset (Small & Clean)
-   ========================= */
-const sentences = [
-    "I love this movie",
-    "This product is terrible",
-    "Amazing experience",
-    "Worst service ever",
-    "I am very happy",
-    "I hate this",
-    "Excellent quality",
-    "Not satisfied at all",
-    "Very good performance",
-    "Completely disappointing"
-];
 
-const labels = [
-    1,0,1,0,1,0,1,0,1,0
-];
+const positiveSentences = [
+"I love this product","This item is amazing","Fantastic experience",
+"Very good quality","I really like this","Excellent product",
+"Best purchase ever","Very satisfied","Superb design",
+"Outstanding performance","Wonderful service","Highly recommended",
+"Very impressive","Good value for money","I am extremely happy",
+"This works perfectly","Brilliant product","Great quality item",
+"Very enjoyable","Absolutely fantastic","Top notch product",
+"Very reliable","Amazing quality","Loved using this",
+"Extremely useful","Perfect purchase","Very well made",
+"This is wonderful","Super happy with this","Excellent design",
+"Great service","Very comfortable","Works very well",
+"Totally worth it","Impressive build quality","Very efficient",
+"This is awesome","Great performance","Fantastic quality",
+"Really good product"
+]
 
-/* =========================
-   Text Preprocessing
-   ========================= */
-const vocab = {};
-let vocabIndex = 1;
+const negativeSentences = [
+"I hate this product","Worst purchase ever","Terrible experience",
+"Very poor quality","I really dislike this","Awful product",
+"Very disappointing","Not worth the money","Extremely bad",
+"Completely useless","Horrible service","Very frustrating",
+"Worst item ever","Poor performance","I regret buying this",
+"This is terrible","Very low quality","Not good at all",
+"Absolutely awful","Very unhappy","This product is bad",
+"Completely disappointing","Very annoying","This is useless",
+"Waste of money","Bad design","Very unreliable",
+"Extremely disappointing","Very poor performance",
+"This is the worst","Very bad product","Terrible quality",
+"I dislike this item","This does not work","Very unsatisfied",
+"Hate this item","Completely bad experience",
+"Really poor product","Extremely bad quality",
+"Very disappointing item"
+]
 
-function tokenize(text) {
-    return text.toLowerCase().split(" ");
+let dataset = []
+
+positiveSentences.forEach(t=>dataset.push({text:t,label:1}))
+negativeSentences.forEach(t=>dataset.push({text:t,label:0}))
+
+let vocabulary={}
+let vocabSize=0
+let model
+
+const stopWords=["this","is","the","a","an","very","really"]
+
+function preprocess(text){
+
+text = text.toLowerCase()
+text = text.replace(/[^\w\s]/g,"")
+
+let words = text.split(" ")
+
+words = words.filter(w=>!stopWords.includes(w))
+
+return words
+
 }
 
-sentences.forEach(s => {
-    tokenize(s).forEach(word => {
-        if (!vocab[word]) {
-            vocab[word] = vocabIndex++;
-        }
-    });
-});
+function buildVocabulary(){
 
-function vectorize(text) {
-    const vector = new Array(vocabIndex).fill(0);
-    tokenize(text).forEach(word => {
-        if (vocab[word]) {
-            vector[vocab[word]] = 1;
-        }
-    });
-    return vector;
+dataset.forEach(d=>{
+
+let words = preprocess(d.text)
+
+words.forEach(w=>{
+
+if(!(w in vocabulary)){
+vocabulary[w]=vocabSize++
 }
 
-/* =========================
-   Prepare Training Data
-   ========================= */
-const xs = tf.tensor2d(sentences.map(s => vectorize(s)));
-const ys = tf.tensor2d(labels, [labels.length, 1]);
+})
 
-/* =========================
-   Build Dense Model
-   ========================= */
-const model = tf.sequential();
+})
+
+}
+
+function textToVector(text){
+
+let vector=new Array(vocabSize).fill(0)
+
+let words=preprocess(text)
+
+words.forEach(w=>{
+if(w in vocabulary){
+vector[vocabulary[w]]=1
+}
+})
+
+return vector
+
+}
+
+async function trainModel(){
+
+document.getElementById("status").innerHTML="Training Started..."
+
+buildVocabulary()
+
+let xs=dataset.map(d=>textToVector(d.text))
+let ys=dataset.map(d=>d.label)
+
+xs=tf.tensor2d(xs)
+ys=tf.tensor2d(ys,[ys.length,1])
+
+model=tf.sequential()
 
 model.add(tf.layers.dense({
-    units: 16,
-    activation: "relu",
-    inputShape: [vocabIndex]
-}));
+units:32,
+activation:'relu',
+inputShape:[vocabSize]
+}))
+
+model.add(tf.layers.dropout({rate:0.2}))
 
 model.add(tf.layers.dense({
-    units: 1,
-    activation: "sigmoid"
-}));
+units:16,
+activation:'relu'
+}))
+
+model.add(tf.layers.dense({
+units:1,
+activation:'sigmoid'
+}))
 
 model.compile({
-    optimizer: "adam",
-    loss: "binaryCrossentropy",
-    metrics: ["accuracy"]
-});
+optimizer:'adam',
+loss:'binaryCrossentropy',
+metrics:['accuracy']
+})
 
-/* =========================
-   Train Model
-   ========================= */
-(async function trainModel() {
-    await model.fit(xs, ys, {
-        epochs: 40,
-        verbose: 0
-    });
-    console.log("Model trained");
-})();
+let accData=[]
+let epochData=[]
 
-/* =========================
-   Prediction
-   ========================= */
-async function predictSentiment() {
-    const text = document.getElementById("userText").value;
-    const input = tf.tensor2d([vectorize(text)]);
-    const prediction = model.predict(input);
-    const score = prediction.dataSync()[0];
+await model.fit(xs,ys,{
 
-    let sentiment = score > 0.5 ? "Positive 😊" : "Negative 😞";
+epochs:150,
 
-    document.getElementById("result").innerHTML =
-        `Sentiment: ${sentiment}<br>
-         Confidence Score: ${score.toFixed(2)}`;
+callbacks:{
+
+onEpochEnd:(epoch,logs)=>{
+
+epochData.push(epoch+1)
+accData.push(logs.acc || logs.accuracy)
+
+updateChart(epochData,accData)
+
+console.log(
+"Epoch:",epoch+1,
+"Loss:",logs.loss,
+"Accuracy:",logs.acc || logs.accuracy
+)
+
 }
+
+}
+
+})
+
+document.getElementById("status").innerHTML="Training Complete ✔"
+
+}
+
+function predict(){
+
+if(!model){
+alert("Train the model first")
+return
+}
+
+let text=document.getElementById("sentence").value
+
+let vec=textToVector(text)
+
+let prediction=model.predict(tf.tensor2d([vec]))
+
+prediction.data().then(res=>{
+
+let score=res[0]
+
+let sentiment=score>0.5?"Positive 😊":"Negative 😡"
+
+document.getElementById("prediction").innerHTML=
+"Sentiment: "+sentiment+" | Confidence: "+score.toFixed(2)
+
+})
+
+}
+
+let chart
+
+function updateChart(epoch,accuracy){
+
+if(!chart){
+
+chart=new Chart(
+document.getElementById("chart"),
+{
+type:'line',
+data:{
+labels:epoch,
+datasets:[
+{
+label:'Training Accuracy',
+data:accuracy
+}
+]
+}
+}
+)
+
+}
+else{
+
+chart.data.labels=epoch
+chart.data.datasets[0].data=accuracy
+chart.update()
+
+}
+
+}
+
 </script>
+
 </body>
+
 </html>

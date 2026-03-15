@@ -1,153 +1,198 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-    <title>Text Sentiment Analysis – RNN</title>
 
-    <!-- TensorFlow.js -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+<title>Lab 2 - Sentiment Prediction</title>
 
-    <style>
-        body {
-            font-family: Arial;
-            background: #f4f4f4;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 20px;
-            width: 650px;
-            margin: auto;
-            border-radius: 8px;
-        }
-        input, button {
-            width: 100%;
-            padding: 10px;
-            margin-top: 10px;
-        }
-        h2 {
-            text-align: center;
-        }
-        #result {
-            margin-top: 15px;
-            font-weight: bold;
-        }
-    </style>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+<style>
+
+body{
+font-family:Arial;
+margin:40px;
+}
+
+input{
+padding:10px;
+width:300px;
+}
+
+button{
+padding:10px;
+margin-left:10px;
+}
+
+</style>
+
 </head>
 
 <body>
-<div class="container">
-    <h2>Text Sentiment Analysis</h2>
-    <p><b>Model:</b> Simple RNN (TensorFlow.js)</p>
 
-    <input type="text" id="userText" placeholder="Enter a sentence..." />
-    <button onclick="predictSentiment()">Analyze Sentiment</button>
+<h2>Sentiment Analysis - Prediction</h2>
 
-    <div id="result"></div>
-</div>
+<button onclick="trainModel()">Train Model</button>
+
+<h3 id="status"></h3>
+
+<hr>
+
+<h3>Enter Sentence</h3>
+
+<input id="sentence" placeholder="Type sentence here">
+
+<button onclick="predict()">Analyze Sentiment</button>
+
+<h3 id="prediction"></h3>
 
 <script>
-/* =========================
-   Dataset
-   ========================= */
-const sentences = [
-    "i love this movie",
-    "this product is terrible",
-    "amazing experience",
-    "worst service ever",
-    "i am very happy",
-    "i hate this",
-    "excellent quality",
-    "not satisfied at all",
-    "very good performance",
-    "completely disappointing"
-];
 
-const labels = [1,0,1,0,1,0,1,0,1,0];
+const positiveSentences = [
+"I love this product","This item is amazing","Fantastic experience",
+"Very good quality","Excellent product","Best purchase ever",
+"Very satisfied","Superb design","Outstanding performance",
+"Wonderful service","Highly recommended","Great quality item",
+"Absolutely fantastic","Amazing quality","Perfect purchase",
+"Great service","Very comfortable","Totally worth it",
+"Great performance","Really good product"
+]
 
-/* =========================
-   Tokenization
-   ========================= */
-const vocab = {};
-let vocabIndex = 1;
-const maxLen = 5;
+const negativeSentences = [
+"I hate this product","Worst purchase ever","Terrible experience",
+"Very poor quality","Awful product","Very disappointing",
+"Not worth the money","Extremely bad","Completely useless",
+"Horrible service","Worst item ever","Poor performance",
+"I regret buying this","This is terrible","Not good at all",
+"Absolutely awful","Waste of money","Very unreliable",
+"Very bad product","Terrible quality"
+]
 
-sentences.forEach(s => {
-    s.split(" ").forEach(word => {
-        if (!vocab[word]) {
-            vocab[word] = vocabIndex++;
-        }
-    });
-});
+let dataset=[]
 
-function encodeSentence(sentence) {
-    const tokens = sentence.toLowerCase().split(" ");
-    const encoded = tokens.map(w => vocab[w] || 0);
+positiveSentences.forEach(t=>dataset.push({text:t,label:1}))
+negativeSentences.forEach(t=>dataset.push({text:t,label:0}))
 
-    while (encoded.length < maxLen) encoded.push(0);
-    return encoded.slice(0, maxLen);
+let vocabulary={}
+let vocabSize=0
+let model
+
+function preprocess(text){
+
+text=text.toLowerCase()
+text=text.replace(/[^\w\s]/g,"")
+
+return text.split(" ")
+
 }
 
-/* =========================
-   Prepare Data
-   ========================= */
-const xs = tf.tensor2d(sentences.map(s => encodeSentence(s)));
-const ys = tf.tensor2d(labels, [labels.length, 1]);
+function buildVocabulary(){
 
-/* =========================
-   Build RNN Model
-   ========================= */
-const model = tf.sequential();
+dataset.forEach(d=>{
 
-model.add(tf.layers.embedding({
-    inputDim: vocabIndex + 1,
-    outputDim: 8,
-    inputLength: maxLen
-}));
+let words=preprocess(d.text)
 
-model.add(tf.layers.simpleRNN({
-    units: 16,
-    activation: "tanh"
-}));
+words.forEach(w=>{
+
+if(!(w in vocabulary)){
+vocabulary[w]=vocabSize++
+}
+
+})
+
+})
+
+}
+
+function textToVector(text){
+
+let vector=new Array(vocabSize).fill(0)
+
+let words=preprocess(text)
+
+words.forEach(w=>{
+if(w in vocabulary){
+vector[vocabulary[w]]=1
+}
+})
+
+return vector
+
+}
+
+async function trainModel(){
+
+document.getElementById("status").innerHTML="Training Model..."
+
+buildVocabulary()
+
+let xs=dataset.map(d=>textToVector(d.text))
+let ys=dataset.map(d=>d.label)
+
+xs=tf.tensor2d(xs)
+ys=tf.tensor2d(ys,[ys.length,1])
+
+model=tf.sequential()
 
 model.add(tf.layers.dense({
-    units: 1,
-    activation: "sigmoid"
-}));
+units:16,
+activation:'relu',
+inputShape:[vocabSize]
+}))
+
+model.add(tf.layers.dense({
+units:1,
+activation:'sigmoid'
+}))
 
 model.compile({
-    optimizer: "adam",
-    loss: "binaryCrossentropy",
-    metrics: ["accuracy"]
-});
+optimizer:'adam',
+loss:'binaryCrossentropy',
+metrics:['accuracy']
+})
 
-/* =========================
-   Train Model
-   ========================= */
-(async function trainModel() {
-    await model.fit(xs, ys, {
-        epochs: 50,
-        verbose: 0
-    });
-    console.log("RNN Model Trained");
-})();
+await model.fit(xs,ys,{
+epochs:120
+})
 
-/* =========================
-   Prediction
-   ========================= */
-function predictSentiment() {
-    const text = document.getElementById("userText").value;
-    const encoded = encodeSentence(text);
-    const input = tf.tensor2d([encoded]);
+document.getElementById("status").innerHTML="Training Complete ✔"
 
-    const prediction = model.predict(input);
-    const score = prediction.dataSync()[0];
+console.log("Model training finished")
 
-    const sentiment = score > 0.5 ? "Positive 😊" : "Negative 😞";
-
-    document.getElementById("result").innerHTML =
-        `Sentiment: ${sentiment}<br>
-         Confidence Score: ${score.toFixed(2)}`;
 }
+
+function predict(){
+
+if(!model){
+alert("Train the model first")
+return
+}
+
+let text=document.getElementById("sentence").value
+
+let vec=textToVector(text)
+
+let prediction=model.predict(tf.tensor2d([vec]))
+
+prediction.data().then(res=>{
+
+let score=res[0]
+
+let sentiment=score>0.5?"Positive 😊":"Negative 😡"
+
+document.getElementById("prediction").innerHTML=
+"Sentiment: "+sentiment+" | Confidence: "+score.toFixed(2)
+
+console.log("Input:",text)
+console.log("Sentiment:",sentiment)
+console.log("Confidence:",score)
+
+})
+
+}
+
 </script>
+
 </body>
+
 </html>
