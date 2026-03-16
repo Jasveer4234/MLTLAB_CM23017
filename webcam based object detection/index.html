@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<title>AI Smart Surveillance System</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body{
+background:#0f172a;
+color:white;
+font-family:Arial;
+text-align:center;
+}
+
+.dashboard{
+display:flex;
+justify-content:center;
+gap:30px;
+margin-top:20px;
+}
+
+.camera{
+position:relative;
+}
+
+video{
+border-radius:10px;
+}
+
+canvas{
+position:absolute;
+top:0;
+left:0;
+}
+
+.panel{
+background:#1e293b;
+padding:20px;
+border-radius:10px;
+width:350px;
+}
+
+button{
+padding:10px;
+margin-top:10px;
+background:#22c55e;
+border:none;
+color:white;
+cursor:pointer;
+border-radius:5px;
+}
+
+table{
+width:100%;
+margin-top:10px;
+font-size:14px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>AI Smart Surveillance System</h1>
+
+<div class="dashboard">
+
+<div class="camera">
+
+<video id="webcam" width="640" height="480" autoplay></video>
+<canvas id="canvas"></canvas>
+
+</div>
+
+<div class="panel">
+
+<h3>Detected Objects</h3>
+<ul id="objects"></ul>
+
+<h3>Object Counter</h3>
+<ul id="counter"></ul>
+
+<h3>Detection Analytics</h3>
+<canvas id="chart"></canvas>
+
+<button onclick="capture()">Capture Screenshot</button>
+
+<h3>Detection History</h3>
+
+<table border="1" id="logTable">
+
+<tr>
+<th>Time</th>
+<th>Object</th>
+</tr>
+
+</table>
+
+<button onclick="exportCSV()">Export Report</button>
+
+</div>
+
+</div>
+
+<script>
+
+const video=document.getElementById("webcam")
+const canvas=document.getElementById("canvas")
+const ctx=canvas.getContext("2d")
+
+const objectsList=document.getElementById("objects")
+const counterList=document.getElementById("counter")
+
+let model
+let history={}
+let tracked={}
+let idCount=0
+
+// Prevent logging the same object repeatedly
+let lastLogged={}
+
+const dangerous=["knife","scissors"]
+
+const alarm=new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg")
+
+async function setupCamera(){
+
+const stream=await navigator.mediaDevices.getUserMedia({video:true})
+
+video.srcObject=stream
+
+return new Promise(resolve=>{
+video.onloadedmetadata=()=>resolve(video)
+})
+
+}
+
+function speak(text){
+
+const speech=new SpeechSynthesisUtterance(text)
+window.speechSynthesis.speak(speech)
+
+}
+
+function capture(){
+
+ctx.drawImage(video,0,0,canvas.width,canvas.height)
+
+const link=document.createElement("a")
+link.download="capture.png"
+link.href=canvas.toDataURL()
+link.click()
+
+}
+
+function autoCapture(object){
+
+ctx.drawImage(video,0,0,canvas.width,canvas.height)
+
+const link=document.createElement("a")
+link.href=canvas.toDataURL()
+link.download="danger_"+object+"_"+Date.now()+".png"
+link.click()
+
+}
+
+function getID(obj){
+
+if(!tracked[obj]){
+tracked[obj]="ID_"+idCount++
+}
+
+return tracked[obj]
+
+}
+
+let chart
+
+function initChart(){
+
+chart=new Chart(
+document.getElementById("chart"),
+{
+type:"bar",
+data:{
+labels:[],
+datasets:[{
+label:"Detections",
+data:[]
+}]
+}
+})
+
+}
+
+function updateChart(){
+
+chart.data.labels=Object.keys(history)
+chart.data.datasets[0].data=Object.values(history)
+chart.update()
+
+}
+
+function logDetection(object){
+
+const now=Date.now()
+
+if(lastLogged[object] && now-lastLogged[object]<5000){
+return
+}
+
+lastLogged[object]=now
+
+const table=document.getElementById("logTable")
+
+const row=table.insertRow(-1)
+
+row.insertCell(0).innerText=new Date().toLocaleTimeString()
+row.insertCell(1).innerText=object
+
+}
+
+function exportCSV(){
+
+const table=document.getElementById("logTable")
+
+let csv=[]
+
+for(let i=0;i<table.rows.length;i++){
+
+let row=[],cols=table.rows[i].cells
+
+for(let j=0;j<cols.length;j++){
+row.push(cols[j].innerText)
+}
+
+csv.push(row.join(","))
+
+}
+
+const blob=new Blob([csv.join("\n")],{type:"text/csv"})
+const url=URL.createObjectURL(blob)
+
+const link=document.createElement("a")
+
+link.href=url
+link.download="detection_report.csv"
+
+document.body.appendChild(link)
+
+link.click()
+
+document.body.removeChild(link)
+
+URL.revokeObjectURL(url)
+
+}
+
+async function detect(){
+
+const predictions=await model.detect(video)
+
+ctx.clearRect(0,0,canvas.width,canvas.height)
+
+objectsList.innerHTML=""
+counterList.innerHTML=""
+
+let counter={}
+
+predictions.forEach(pred=>{
+
+const[x,y,w,h]=pred.bbox
+
+ctx.strokeStyle="lime"
+ctx.lineWidth=2
+ctx.strokeRect(x,y,w,h)
+
+const id=getID(pred.class)
+
+const label=pred.class+" "+id+
+" ("+Math.round(pred.score*100)+"%)"
+
+ctx.fillStyle="lime"
+ctx.font="16px Arial"
+ctx.fillText(label,x,y-5)
+
+let li=document.createElement("li")
+li.innerText=label
+objectsList.appendChild(li)
+
+if(!counter[pred.class]){
+counter[pred.class]=0
+}
+
+counter[pred.class]++
+
+if(!history[pred.class]){
+history[pred.class]=0
+}
+
+history[pred.class]++
+
+logDetection(pred.class)
+
+if(dangerous.includes(pred.class)){
+
+alarm.play()
+speak("Warning dangerous object detected")
+autoCapture(pred.class)
+
+}
+
+})
+
+for(let obj in counter){
+
+let li=document.createElement("li")
+li.innerText=obj+" : "+counter[obj]
+
+counterList.appendChild(li)
+
+}
+
+updateChart()
+
+requestAnimationFrame(detect)
+
+}
+
+async function main(){
+
+await setupCamera()
+
+video.play()
+
+canvas.width=640
+canvas.height=480
+
+model=await cocoSsd.load()
+
+initChart()
+
+detect()
+
+}
+
+main()
+
+</script>
+
+</body>
+</html>

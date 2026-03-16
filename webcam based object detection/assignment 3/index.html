@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>AI Performance Analysis (CPU vs GPU)</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body{
+background:#0f172a;
+color:white;
+font-family:Arial;
+text-align:center;
+}
+
+.container{
+position:relative;
+display:inline-block;
+}
+
+video{
+border-radius:10px;
+}
+
+canvas{
+position:absolute;
+top:0;
+left:0;
+}
+
+.panel{
+margin-top:20px;
+}
+
+button{
+padding:10px;
+margin:5px;
+background:#22c55e;
+border:none;
+color:white;
+cursor:pointer;
+border-radius:5px;
+}
+
+.stats{
+margin-top:10px;
+font-size:18px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>Real-Time Inference Performance Analysis</h2>
+
+<div class="container">
+
+<video id="webcam" width="640" height="480" autoplay></video>
+<canvas id="canvas" width="640" height="480"></canvas>
+
+</div>
+
+<div class="panel">
+
+<button onclick="setBackend('cpu')">CPU Mode</button>
+<button onclick="setBackend('webgl')">GPU (WebGL) Mode</button>
+
+</div>
+
+<div class="stats">
+
+<p>Backend: <span id="backend">loading</span></p>
+<p>FPS: <span id="fps">0</span></p>
+<p>Average FPS: <span id="avgfps">0</span></p>
+<p>Inference Time: <span id="inference">0</span> ms</p>
+
+</div>
+
+<canvas id="chart"></canvas>
+
+<script>
+
+const video=document.getElementById("webcam")
+const canvas=document.getElementById("canvas")
+const ctx=canvas.getContext("2d")
+
+const fpsText=document.getElementById("fps")
+const avgText=document.getElementById("avgfps")
+const infText=document.getElementById("inference")
+const backendText=document.getElementById("backend")
+
+let model
+
+let frameCount=0
+let startTime=performance.now()
+
+let lastFrame=performance.now()
+
+let chart
+
+async function setupCamera(){
+
+const stream=await navigator.mediaDevices.getUserMedia({video:true})
+
+video.srcObject=stream
+
+return new Promise(resolve=>{
+video.onloadedmetadata=()=>resolve(video)
+})
+
+}
+
+async function loadModel(){
+
+model=await mobilenet.load()
+
+}
+
+function initChart(){
+
+chart=new Chart(document.getElementById("chart"),{
+
+type:"line",
+
+data:{
+labels:[],
+datasets:[{
+label:"FPS",
+data:[],
+borderColor:"lime",
+fill:false
+}]
+},
+
+options:{animation:false}
+
+})
+
+}
+
+function updateChart(fps){
+
+if(chart.data.labels.length>30){
+
+chart.data.labels.shift()
+chart.data.datasets[0].data.shift()
+
+}
+
+chart.data.labels.push(frameCount)
+chart.data.datasets[0].data.push(fps)
+
+chart.update()
+
+}
+
+async function setBackend(type){
+
+await tf.setBackend(type)
+await tf.ready()
+
+backendText.innerText=tf.getBackend()
+
+}
+
+async function classifyFrame(){
+
+const startInf=performance.now()
+
+const predictions=await model.classify(video)
+
+const endInf=performance.now()
+
+const infTime=(endInf-startInf).toFixed(2)
+
+infText.innerText=infTime
+
+ctx.clearRect(0,0,canvas.width,canvas.height)
+
+if(predictions.length>0){
+
+const label=predictions[0].className
+const confidence=(predictions[0].probability*100).toFixed(2)
+
+ctx.fillStyle="lime"
+ctx.font="22px Arial"
+
+ctx.fillText(label+" ("+confidence+"%)",20,40)
+
+}
+
+const now=performance.now()
+
+const fps=Math.round(1000/(now-lastFrame))
+
+lastFrame=now
+
+fpsText.innerText=fps
+
+frameCount++
+
+const elapsed=(now-startTime)/1000
+
+const avgFPS=(frameCount/elapsed).toFixed(2)
+
+avgText.innerText=avgFPS
+
+updateChart(fps)
+
+requestAnimationFrame(classifyFrame)
+
+}
+
+async function main(){
+
+await setupCamera()
+
+video.play()
+
+await loadModel()
+
+backendText.innerText=tf.getBackend()
+
+initChart()
+
+classifyFrame()
+
+}
+
+main()
+
+</script>
+
+</body>
+
+</html>

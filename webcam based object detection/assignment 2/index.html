@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Advanced Webcam Classification Overlay</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+
+<style>
+
+body{
+background:#0f172a;
+color:white;
+font-family:Arial;
+text-align:center;
+}
+
+.container{
+position:relative;
+display:inline-block;
+}
+
+video{
+border-radius:10px;
+}
+
+canvas{
+position:absolute;
+top:0;
+left:0;
+}
+
+.info{
+margin-top:15px;
+font-size:20px;
+color:#22c55e;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>Advanced Webcam Classification (MobileNet)</h2>
+
+<div class="container">
+
+<video id="webcam" width="640" height="480" autoplay></video>
+<canvas id="canvas" width="640" height="480"></canvas>
+
+</div>
+
+<div class="info">
+FPS: <span id="fps">0</span>
+</div>
+
+<script>
+
+const video=document.getElementById("webcam")
+const canvas=document.getElementById("canvas")
+const ctx=canvas.getContext("2d")
+
+const fpsText=document.getElementById("fps")
+
+let model
+
+let lastTime=performance.now()
+
+async function setupCamera(){
+
+const stream=await navigator.mediaDevices.getUserMedia({
+video:true
+})
+
+video.srcObject=stream
+
+return new Promise(resolve=>{
+video.onloadedmetadata=()=>resolve(video)
+})
+
+}
+
+async function loadModel(){
+
+model=await mobilenet.load()
+
+}
+
+async function classifyFrame(){
+
+const predictions=await model.classify(video)
+
+ctx.clearRect(0,0,canvas.width,canvas.height)
+
+if(predictions.length>0){
+
+const label=predictions[0].className
+const confidence=(predictions[0].probability*100).toFixed(2)
+
+const text=label+" ("+confidence+"%)"
+
+if(confidence>80){
+ctx.fillStyle="lime"
+}else{
+ctx.fillStyle="yellow"
+}
+
+ctx.font="24px Arial"
+ctx.fillText(text,20,40)
+
+}
+
+const now=performance.now()
+const fps=Math.round(1000/(now-lastTime))
+lastTime=now
+
+fpsText.innerText=fps
+
+requestAnimationFrame(classifyFrame)
+
+}
+
+async function main(){
+
+await setupCamera()
+
+video.play()
+
+await loadModel()
+
+classifyFrame()
+
+}
+
+main()
+
+</script>
+
+</body>
+
+</html>
