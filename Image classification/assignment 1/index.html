@@ -1,0 +1,120 @@
+```html
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>MobileNet Image Classification</title>
+
+<!-- TensorFlow.js -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+
+<!-- MobileNet model -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0"></script>
+
+<style>
+
+body{
+font-family: Arial;
+text-align:center;
+background:#f2f2f2;
+margin-top:40px;
+}
+
+h2{
+color:#333;
+}
+
+img{
+margin-top:15px;
+border-radius:10px;
+box-shadow:0px 0px 8px gray;
+}
+
+#result{
+margin-top:20px;
+font-size:18px;
+background:white;
+display:inline-block;
+padding:15px;
+border-radius:10px;
+box-shadow:0px 0px 8px #bbb;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>Image Classification using MobileNet</h2>
+
+<input type="file" id="upload" accept="image/*">
+
+<br>
+
+<img id="image" width="300">
+
+<div id="result">Loading MobileNet model...</div>
+
+<script>
+
+let model;
+
+async function loadModel(){
+
+model = await mobilenet.load();
+
+document.getElementById("result").innerHTML =
+"Model Loaded ✔ Upload an image to classify.";
+
+}
+
+loadModel();
+
+
+const upload = document.getElementById("upload");
+const image = document.getElementById("image");
+const result = document.getElementById("result");
+
+upload.addEventListener("change", function(){
+
+const file = upload.files[0];
+
+const reader = new FileReader();
+
+reader.onload = function(){
+image.src = reader.result;
+};
+
+reader.readAsDataURL(file);
+
+image.onload = classifyImage;
+
+});
+
+
+async function classifyImage(){
+
+result.innerHTML = "Analyzing Image...";
+
+const predictions = await model.classify(image,3);
+
+let html = "<h3>Top 3 Predictions</h3>";
+
+predictions.forEach(function(p){
+
+html += `<p><b>${p.className}</b> — ${(p.probability*100).toFixed(2)}%</p>`;
+
+});
+
+result.innerHTML = html;
+
+}
+
+</script>
+
+</body>
+
+</html>
+```

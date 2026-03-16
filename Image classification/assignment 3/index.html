@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>MobileNet vs ResNet Comparison</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+
+<style>
+body{font-family:Arial;text-align:center;background:#f2f2f2;margin-top:30px;}
+img{width:320px;margin-top:10px;border-radius:10px;}
+.box{display:inline-block;width:40%;padding:15px;background:white;margin:10px;border-radius:10px;box-shadow:0 0 10px rgba(0,0,0,0.2);}
+.speed{color:green;font-weight:bold;}
+</style>
+
+</head>
+
+<body>
+
+<h2>MobileNet vs ResNet Image Classification</h2>
+
+<input type="file" id="upload"><br>
+<img id="image">
+
+<div class="box">
+<h3>MobileNet</h3>
+<div id="mobileResult">Loading model...</div>
+<div id="mobileTime" class="speed"></div>
+</div>
+
+<div class="box">
+<h3>ResNet</h3>
+<div id="resnetResult">Loading model...</div>
+<div id="resnetTime" class="speed"></div>
+</div>
+
+<script>
+const RESNET_PATH = 'resnet50_tfjs/model.json';
+
+async function checkResNetPath() {
+  try {
+    const resp = await fetch(RESNET_PATH, { method: 'HEAD' });
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    console.log(`ResNet path exists: ${RESNET_PATH}`);
+  } catch (err) {
+    console.warn(`ResNet path missing: ${RESNET_PATH}`, err);
+    document.getElementById('resnetResult').innerText =
+      'ResNet path missing: place resnet50_tfjs/model.json here';
+  }
+}
+
+checkResNetPath(); // show quick report in console (and UI warning)
+
+let mobileModel = null;
+let resnetModel = null;
+
+async function loadModels() {
+  try {
+    mobileModel = await mobilenet.load();
+    document.getElementById('mobileResult').innerHTML = 'MobileNet Loaded ✔';
+  } catch (e) {
+    console.log(e);
+    document.getElementById('mobileResult').innerHTML = 'MobileNet failed to load';
+  }
+
+  try {
+    resnetModel = await tf.loadLayersModel(RESNET_PATH);
+    document.getElementById('resnetResult').innerHTML = 'ResNet Loaded ✔';
+  } catch (e) {
+    resnetModel = null;
+    document.getElementById('resnetResult').innerHTML =
+      'ResNet not available (fallback: MobileNet only). Convert ResNet50 to TFJS and place resnet50_tfjs/model.json and .bin in this folder.';
+    document.getElementById('resnetTime').innerHTML = 'ResNet inactive';
+    console.log('ResNet load error:', e);
+  }
+}
+
+loadModels();
+
+const upload = document.getElementById('upload');
+const img = document.getElementById('image');
+
+upload.addEventListener('change', function() {
+  const file = upload.files[0];
+  const reader = new FileReader();
+
+  reader.onload = function() {
+    img.src = reader.result;
+  };
+
+  reader.readAsDataURL(file);
+
+  img.onload = function() {
+    if (mobileModel) classifyMobileNet();
+    if (resnetModel) classifyResNet();
+  };
+});
+
+async function classifyMobileNet() {
+  let start = performance.now();
+  const predictions = await mobileModel.classify(img, 3);
+  let end = performance.now();
+
+  let html = '';
+  predictions.forEach(p => {
+    html += `<p>${p.className} — ${(p.probability * 100).toFixed(2)}%</p>`;
+  });
+  document.getElementById('mobileResult').innerHTML = html;
+  document.getElementById('mobileTime').innerHTML =
+    'Prediction Time: ' + (end - start).toFixed(2) + ' ms';
+}
+
+async function classifyResNet() {
+  let start = performance.now();
+
+  let tensor = tf.browser
+    .fromPixels(img)
+    .resizeBilinear([224, 224])
+    .toFloat()
+    .div(255)
+    .expandDims();
+
+  let pred = resnetModel.predict(tensor);
+  let values = await pred.data();
+
+  let top = Array.from(values)
+    .map((v, i) => ({ i, v }))
+    .sort((a, b) => b.v - a.v)
+    .slice(0, 3);
+
+  let labels = await fetch(
+    'https://storage.googleapis.com/download.tensorflow.org/data/imagenet_class_index.json'
+  ).then(r => r.json());
+
+  let html = '';
+  top.forEach(o => {
+    let name = labels[o.i] ? labels[o.i][1] : 'Unknown';
+    html += `<p>${name} — ${(o.v * 100).toFixed(2)}%</p>`;
+  });
+
+  let end = performance.now();
+
+  document.getElementById('resnetResult').innerHTML = html;
+  document.getElementById('resnetTime').innerHTML =
+    'Prediction Time: ' + (end - start).toFixed(2) + ' ms';
+}
+
+</script>
+</body>
+</html>

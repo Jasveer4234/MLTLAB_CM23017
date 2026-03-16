@@ -1,0 +1,232 @@
+```html
+<!DOCTYPE html>
+<html>
+<head>
+
+<title>AI Image Classifier Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body{
+font-family:Arial;
+background:#eef2f7;
+text-align:center;
+padding:30px;
+}
+
+h1{
+color:#333;
+}
+
+.container{
+background:white;
+width:500px;
+margin:auto;
+padding:20px;
+border-radius:12px;
+box-shadow:0 0 12px rgba(0,0,0,0.1);
+}
+
+video,img{
+border-radius:10px;
+margin-top:10px;
+box-shadow:0 0 8px gray;
+}
+
+button{
+padding:10px 18px;
+margin:10px;
+border:none;
+background:#007bff;
+color:white;
+border-radius:6px;
+cursor:pointer;
+}
+
+button:hover{
+background:#0056b3;
+}
+
+#results{
+margin-top:20px;
+font-size:16px;
+text-align:left;
+}
+
+canvas{
+margin-top:20px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>AI Image Classification Dashboard</h1>
+
+<div class="container">
+
+<input type="file" id="upload" accept="image/*">
+
+<br>
+
+<img id="preview" width="260">
+
+<br>
+
+<button onclick="startWebcam()">Start Webcam</button>
+
+<br>
+
+<video id="webcam" width="260" autoplay muted></video>
+
+<div id="results">Loading AI model...</div>
+
+<canvas id="chart"></canvas>
+
+</div>
+
+<script>
+
+let model;
+let chart;
+
+async function loadModel(){
+
+model = await mobilenet.load();
+
+document.getElementById("results").innerHTML="Model Loaded ✔";
+
+}
+
+loadModel();
+
+
+const upload = document.getElementById("upload");
+const preview = document.getElementById("preview");
+
+upload.addEventListener("change", function(){
+
+const file = upload.files[0];
+
+const reader = new FileReader();
+
+reader.onload = function(){
+preview.src = reader.result;
+};
+
+reader.readAsDataURL(file);
+
+preview.onload = classifyImage;
+
+});
+
+
+async function classifyImage(){
+
+const predictions = await model.classify(preview,5);
+
+displayResults(predictions);
+
+speakPrediction(predictions[0].className);
+
+}
+
+
+function displayResults(predictions){
+
+let html="<h3>Top Predictions</h3>";
+
+let labels=[];
+let data=[];
+
+predictions.forEach(p=>{
+
+let percent=(p.probability*100).toFixed(2);
+
+labels.push(p.className);
+data.push(percent);
+
+html += `<p><b>${p.className}</b> : ${percent}%</p>`;
+
+});
+
+document.getElementById("results").innerHTML=html;
+
+drawChart(labels,data);
+
+}
+
+
+function drawChart(labels,data){
+
+const ctx=document.getElementById("chart").getContext("2d");
+
+if(chart) chart.destroy();
+
+chart=new Chart(ctx,{
+type:'bar',
+data:{
+labels:labels,
+datasets:[{
+label:'Confidence %',
+data:data
+}]
+},
+options:{
+scales:{
+y:{beginAtZero:true}
+}
+}
+});
+
+}
+
+
+function speakPrediction(text){
+
+const speech=new SpeechSynthesisUtterance("This looks like "+text);
+
+speechSynthesis.speak(speech);
+
+}
+
+
+async function startWebcam(){
+
+const webcam=document.getElementById("webcam");
+
+const stream=await navigator.mediaDevices.getUserMedia({video:true});
+
+webcam.srcObject=stream;
+
+setInterval(classifyWebcam,2000);
+
+}
+
+
+async function classifyWebcam(){
+
+const webcam=document.getElementById("webcam");
+
+if(webcam.readyState===4){
+
+const predictions=await model.classify(webcam,5);
+
+displayResults(predictions);
+
+}
+
+}
+
+</script>
+
+</body>
+
+</html>
+```
