@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Squat Counter - Advanced</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
+
+  <style>
+    body { text-align: center; font-family: Arial; }
+    #container { position: relative; width: 700px; margin: auto; }
+    video, canvas { position: absolute; top: 0; left: 0; }
+  </style>
+</head>
+
+<body>
+
+<h2>Squat Counter (PoseNet)</h2>
+<h3>Count: <span id="count">0</span></h3>
+
+<div id="container">
+  <video id="video" width="700" height="500" autoplay></video>
+  <canvas id="canvas" width="700" height="500"></canvas>
+</div>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let count = 0;
+let stage = "up";
+let prevKeypoints = [];
+
+// Camera setup
+async function setupCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  video.srcObject = stream;
+  return new Promise(resolve => video.onloadedmetadata = resolve);
+}
+
+// 🔷 Smoothing
+function smooth(keypoints) {
+  if (prevKeypoints.length === 0) {
+    prevKeypoints = keypoints;
+    return keypoints;
+  }
+
+  return keypoints.map((kp, i) => {
+    let prev = prevKeypoints[i];
+    return {
+      ...kp,
+      position: {
+        x: 0.7 * kp.position.x + 0.3 * prev.position.x,
+        y: 0.7 * kp.position.y + 0.3 * prev.position.y
+      }
+    };
+  });
+}
+
+// 🔷 Angle calculation
+function getAngle(A, B, C) {
+  let AB = Math.hypot(B.x-A.x, B.y-A.y);
+  let BC = Math.hypot(B.x-C.x, B.y-C.y);
+  let AC = Math.hypot(C.x-A.x, C.y-A.y);
+
+  return Math.acos((AB*AB + BC*BC - AC*AC)/(2*AB*BC)) * 180/Math.PI;
+}
+
+// 🔷 Draw skeleton
+function drawSkeleton(keypoints) {
+  const pairs = posenet.getAdjacentKeyPoints(keypoints, 0.6);
+  pairs.forEach(([a, b]) => {
+    ctx.beginPath();
+    ctx.moveTo(a.position.x, a.position.y);
+    ctx.lineTo(b.position.x, b.position.y);
+    ctx.strokeStyle = "green";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  });
+}
+
+// 🔷 Draw keypoints
+function drawKeypoints(keypoints) {
+  keypoints.forEach(kp => {
+    if (kp.score > 0.6) {
+      ctx.beginPath();
+      ctx.arc(kp.position.x, kp.position.y, 6, 0, 2*Math.PI);
+      ctx.fillStyle = "red";
+      ctx.fill();
+    }
+  });
+}
+
+// 🔷 Squat counting
+function countSquats(keypoints) {
+
+  let hip = keypoints.find(p => p.part === "leftHip");
+  let knee = keypoints.find(p => p.part === "leftKnee");
+  let ankle = keypoints.find(p => p.part === "leftAnkle");
+
+  if (hip && knee && ankle && hip.score>0.5 && knee.score>0.5 && ankle.score>0.5) {
+
+    let angle = getAngle(hip.position, knee.position, ankle.position);
+
+    // Display angle
+    ctx.fillStyle = "yellow";
+    ctx.font = "18px Arial";
+    ctx.fillText("Angle: " + angle.toFixed(1), knee.position.x, knee.position.y);
+
+    if (angle < 90 && stage === "up") {
+      stage = "down";
+    }
+
+    if (angle > 160 && stage === "down") {
+      stage = "up";
+      count++;
+      document.getElementById("count").innerText = count;
+    }
+  }
+}
+
+// 🔷 Main
+async function main() {
+
+  const net = await posenet.load({
+    architecture: 'ResNet50'
+  });
+
+  await setupCamera();
+  video.play();
+
+  async function detect() {
+
+    const pose = await net.estimateSinglePose(video, {
+      flipHorizontal: true
+    });
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    let keypoints = smooth(pose.keypoints);
+
+    drawKeypoints(keypoints);
+    drawSkeleton(keypoints);
+    countSquats(keypoints);
+
+    prevKeypoints = keypoints;
+
+    requestAnimationFrame(detect);
+  }
+
+  detect();
+}
+
+main();
+</script>
+
+</body>
+</html>

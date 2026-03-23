@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Aligned Pose Detection</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
+
+  <style>
+    body { text-align: center; }
+    #container { position: relative; width: 700px; margin: auto; }
+    video, canvas { position: absolute; top: 0; left: 0; }
+  </style>
+</head>
+
+<body>
+
+<h2>Improved Pose Alignment (Stable & Symmetric)</h2>
+
+<div id="container">
+  <video id="video" width="700" height="500" autoplay></video>
+  <canvas id="canvas" width="700" height="500"></canvas>
+</div>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let prevKeypoints = [];
+
+// Camera
+async function setupCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  video.srcObject = stream;
+  return new Promise(resolve => video.onloadedmetadata = resolve);
+}
+
+// 🔷 SMOOTHING (reduce jitter)
+function smooth(keypoints) {
+  if (prevKeypoints.length === 0) {
+    prevKeypoints = keypoints;
+    return keypoints;
+  }
+
+  return keypoints.map((kp, i) => {
+    let prev = prevKeypoints[i];
+    return {
+      ...kp,
+      position: {
+        x: 0.6 * kp.position.x + 0.4 * prev.position.x,
+        y: 0.6 * kp.position.y + 0.4 * prev.position.y
+      }
+    };
+  });
+}
+
+// 🔷 DRAW DOTS (only strong points)
+function drawKeypoints(keypoints) {
+  keypoints.forEach(kp => {
+    if (kp.score > 0.6) {
+      ctx.beginPath();
+      ctx.arc(kp.position.x, kp.position.y, 6, 0, 2*Math.PI);
+      ctx.fillStyle = "red";
+      ctx.fill();
+    }
+  });
+}
+
+// 🔷 DRAW SKELETON
+function drawSkeleton(keypoints) {
+  const pairs = posenet.getAdjacentKeyPoints(keypoints, 0.6);
+
+  pairs.forEach(([a, b]) => {
+    ctx.beginPath();
+    ctx.moveTo(a.position.x, a.position.y);
+    ctx.lineTo(b.position.x, b.position.y);
+    ctx.strokeStyle = "lime";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  });
+}
+
+// 🔷 MAIN
+async function main() {
+
+  const net = await posenet.load({
+    architecture: 'ResNet50',   // 🔥 better alignment
+    outputStride: 32
+  });
+
+  await setupCamera();
+  video.play();
+
+  async function detect() {
+
+    const pose = await net.estimateSinglePose(video, {
+      flipHorizontal: true
+    });
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    let keypoints = smooth(pose.keypoints);
+
+    drawKeypoints(keypoints);
+    drawSkeleton(keypoints);
+
+    prevKeypoints = keypoints;
+
+    requestAnimationFrame(detect);
+  }
+
+  detect();
+}
+
+main();
+</script>
+
+</body>
+</html>

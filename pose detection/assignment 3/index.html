@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Final PoseNet Comparison (CPU Safe)</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body { text-align: center; font-family: Arial; }
+    #container { position: relative; width: 700px; margin: auto; }
+    video, canvas { position: absolute; top: 0; left: 0; }
+    canvas.graph { position: static; }
+    button { margin: 5px; padding: 10px; }
+  </style>
+
+  <!-- remove favicon error -->
+  <link rel="icon" href="data:,">
+</head>
+
+<body>
+
+<h2>🔥 Final PoseNet Analysis Tool (CPU Compatible)</h2>
+
+<button onclick="mode='single'">Single Pose</button>
+<button onclick="mode='multi'">Multi Pose</button>
+<button onclick="downloadCSV()">Download Report</button>
+
+<h3>Mode: <span id="modeText">Single</span></h3>
+<h3>People: <span id="people">0</span></h3>
+<h3>FPS: <span id="fps">0</span></h3>
+<h3>Avg FPS: <span id="avgFps">0</span></h3>
+<h3>Confidence: <span id="confidence">0</span></h3>
+
+<div id="container">
+  <video id="video" width="700" height="500" autoplay></video>
+  <canvas id="canvas" width="700" height="500"></canvas>
+</div>
+
+<br><br>
+<canvas id="chart" class="graph" width="600" height="250"></canvas>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let mode = "single";
+let lastTime = performance.now();
+let fpsHistory = [];
+let logData = [];
+
+// Chart
+const chart = new Chart(document.getElementById("chart"), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: "FPS", data: [], borderWidth: 2 },
+      { label: "Confidence", data: [], borderWidth: 2 }
+    ]
+  }
+});
+
+// Camera
+async function setupCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  video.srcObject = stream;
+  return new Promise(resolve => video.onloadedmetadata = resolve);
+}
+
+// Draw keypoints
+function drawKeypoints(keypoints, color="red") {
+  keypoints.forEach(kp => {
+    if (kp.score > 0.5) {
+      ctx.beginPath();
+      ctx.arc(kp.position.x, kp.position.y, 5, 0, 2*Math.PI);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+  });
+}
+
+// Draw skeleton
+function drawSkeleton(keypoints) {
+  const pairs = posenet.getAdjacentKeyPoints(keypoints, 0.5);
+  pairs.forEach(([a, b]) => {
+    ctx.beginPath();
+    ctx.moveTo(a.position.x, a.position.y);
+    ctx.lineTo(b.position.x, b.position.y);
+    ctx.strokeStyle = "green";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+}
+
+// Draw bounding box
+function drawBox(keypoints) {
+  let xs = keypoints.map(k => k.position.x);
+  let ys = keypoints.map(k => k.position.y);
+
+  let minX = Math.min(...xs);
+  let minY = Math.min(...ys);
+  let maxX = Math.max(...xs);
+  let maxY = Math.max(...ys);
+
+  ctx.strokeStyle = "blue";
+  ctx.strokeRect(minX, minY, maxX-minX, maxY-minY);
+}
+
+// FPS
+function updateFPS() {
+  let now = performance.now();
+  let fps = 1000 / (now - lastTime);
+  lastTime = now;
+
+  fpsHistory.push(fps);
+  if (fpsHistory.length > 30) fpsHistory.shift();
+
+  let avg = fpsHistory.reduce((a,b)=>a+b,0)/fpsHistory.length;
+
+  document.getElementById("fps").innerText = fps.toFixed(1);
+  document.getElementById("avgFps").innerText = avg.toFixed(1);
+
+  return fps;
+}
+
+// Confidence
+function getConfidence(keypoints) {
+  let valid = keypoints.filter(k => k.score > 0.5);
+  return (valid.length / keypoints.length) * 100;
+}
+
+// CSV download
+function downloadCSV() {
+  let csv = "Mode,FPS,Confidence\n";
+  logData.forEach(d => {
+    csv += `${d.mode},${d.fps},${d.conf}\n`;
+  });
+
+  let blob = new Blob([csv], { type: 'text/csv' });
+  let link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "pose_analysis.csv";
+  link.click();
+}
+
+// MAIN
+async function main() {
+
+  // 🔥 FIX: FORCE CPU (solves WebGL error)
+  await tf.setBackend('cpu');
+  await tf.ready();
+  console.log("Backend:", tf.getBackend());
+
+  const net = await posenet.load({
+    architecture: 'MobileNetV1',
+    multiplier: 0.75
+  });
+
+  await setupCamera();
+  video.play();
+
+  async function detect() {
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    let poses = [];
+
+    if (mode === "single") {
+      poses = [await net.estimateSinglePose(video, { flipHorizontal: true })];
+      document.getElementById("modeText").innerText = "Single Pose";
+    } else {
+      poses = await net.estimateMultiplePoses(video, {
+        flipHorizontal: true,
+        maxDetections: 3,
+        scoreThreshold: 0.5
+      });
+      document.getElementById("modeText").innerText = "Multi Pose";
+    }
+
+    document.getElementById("people").innerText = poses.length;
+
+    let totalConf = 0;
+
+    poses.forEach((pose, i) => {
+      let color = ["red","blue","green","yellow","purple"][i%5];
+
+      drawKeypoints(pose.keypoints, color);
+      drawSkeleton(pose.keypoints);
+      drawBox(pose.keypoints);
+
+      totalConf += getConfidence(pose.keypoints);
+    });
+
+    let avgConf = poses.length ? totalConf / poses.length : 0;
+    document.getElementById("confidence").innerText = avgConf.toFixed(1)+"%";
+
+    let fps = updateFPS();
+
+    // Graph update
+    chart.data.labels.push("");
+    chart.data.datasets[0].data.push(fps);
+    chart.data.datasets[1].data.push(avgConf);
+    chart.update();
+
+    // Log data
+    logData.push({ mode: mode, fps: fps.toFixed(1), conf: avgConf.toFixed(1) });
+
+    requestAnimationFrame(detect);
+  }
+
+  detect();
+}
+
+main();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ultra Accurate Pose Detection</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+
+  <style>
+    body { text-align: center; font-family: Arial; }
+    canvas { position: absolute; left: 0; top: 0; }
+    video { display: none; }
+    #container { position: relative; width: 720px; margin: auto; }
+  </style>
+</head>
+
+<body>
+
+<h2>🔥 Ultra Accurate Pose Detection (MediaPipe)</h2>
+
+<div id="container">
+  <video id="video" width="720" height="540"></video>
+  <canvas id="canvas" width="720" height="540"></canvas>
+</div>
+
+<script>
+const videoElement = document.getElementById('video');
+const canvasElement = document.getElementById('canvas');
+const canvasCtx = canvasElement.getContext('2d');
+
+// Initialize Pose
+const pose = new Pose({
+  locateFile: (file) => {
+    return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+  }
+});
+
+// Settings (HIGH ACCURACY)
+pose.setOptions({
+  modelComplexity: 2,   // 🔥 highest accuracy
+  smoothLandmarks: true,
+  enableSegmentation: false,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
+});
+
+// Draw results
+pose.onResults(results => {
+  canvasCtx.save();
+  canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+  // Draw image
+  canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+  // Draw skeleton
+  drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS,
+    { color: 'lime', lineWidth: 4 });
+
+  // Draw dots (perfect joints)
+  drawLandmarks(canvasCtx, results.poseLandmarks,
+    { color: 'red', lineWidth: 2, radius: 5 });
+
+  // Draw bounding box
+  if (results.poseLandmarks) {
+    let xs = results.poseLandmarks.map(p => p.x * canvasElement.width);
+    let ys = results.poseLandmarks.map(p => p.y * canvasElement.height);
+
+    let minX = Math.min(...xs);
+    let minY = Math.min(...ys);
+    let maxX = Math.max(...xs);
+    let maxY = Math.max(...ys);
+
+    canvasCtx.strokeStyle = "blue";
+    canvasCtx.lineWidth = 3;
+    canvasCtx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+  }
+
+  canvasCtx.restore();
+});
+
+// Camera
+const camera = new Camera(videoElement, {
+  onFrame: async () => {
+    await pose.send({ image: videoElement });
+  },
+  width: 720,
+  height: 540
+});
+
+camera.start();
+</script>
+
+</body>
+</html>
