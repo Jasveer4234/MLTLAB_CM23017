@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Assignment 3 - Export, Import & Verify</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+  <style>
+    body {
+      font-family: Arial;
+      background: linear-gradient(to right, #00c9ff, #92fe9d);
+      text-align: center;
+      color: white;
+      margin-top: 20px;
+    }
+
+    .container {
+      background: rgba(0,0,0,0.35);
+      padding: 25px;
+      width: 480px;
+      margin: auto;
+      border-radius: 12px;
+      box-shadow: 0px 0px 20px rgba(0,0,0,0.4);
+    }
+
+    button, input {
+      padding: 10px;
+      margin: 5px;
+      border-radius: 6px;
+      border: none;
+      font-size: 14px;
+    }
+
+    button {
+      background: orange;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: darkorange;
+    }
+
+    .box {
+      margin-top: 12px;
+      padding: 10px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 8px;
+      text-align: left;
+      white-space: pre-line;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h2>Model Export, Import & Verification</h2>
+
+  <!-- Controls -->
+  <button onclick="trainModel()">Train</button>
+  <button onclick="exportModel()">Export</button>
+
+  <br>
+
+  <input type="file" id="fileInput" multiple>
+  <button onclick="importModel()">Import</button>
+  <button onclick="verifyModel()">Verify</button>
+
+  <br>
+
+  <input type="number" id="inputValue" placeholder="Enter value">
+  <button onclick="predict()">Predict</button>
+
+  <!-- Output Panels -->
+  <div class="box"><b>Train:</b><br><span id="trainStatus">Not trained</span></div>
+  <div class="box"><b>Export:</b><br><span id="exportStatus">Not exported</span></div>
+  <div class="box"><b>Import:</b><br><span id="importStatus">Not imported</span></div>
+  <div class="box"><b>Verification:</b><br><span id="verifyStatus">Not verified</span></div>
+  <div class="box"><b>Prediction:</b><br><span id="predictStatus">No prediction</span></div>
+
+</div>
+
+<script>
+
+let model;
+let originalPredictions = [];
+
+// ---------------- TRAIN ----------------
+async function trainModel() {
+
+  document.getElementById("trainStatus").innerText = "Training...";
+
+  model = tf.sequential();
+  model.add(tf.layers.dense({units: 1, inputShape: [1]}));
+
+  model.compile({
+    loss: 'meanSquaredError',
+    optimizer: 'sgd'
+  });
+
+  const xs = tf.tensor([1,2,3,4]);
+  const ys = tf.tensor([3,5,7,9]);
+
+  await model.fit(xs, ys, {epochs: 150});
+
+  // Store original predictions
+  const testValues = [2,5,8];
+  originalPredictions = [];
+
+  for (let val of testValues) {
+    const pred = model.predict(tf.tensor([val]));
+    originalPredictions.push((await pred.data())[0]);
+  }
+
+  document.getElementById("trainStatus").innerText =
+    "Model trained successfully & baseline stored!";
+}
+
+// ---------------- EXPORT ----------------
+async function exportModel() {
+
+  if (!model) {
+    document.getElementById("exportStatus").innerText =
+      "Train model first!";
+    return;
+  }
+
+  await model.save('downloads://my-model');
+
+  document.getElementById("exportStatus").innerText =
+    "Model exported (model.json + weights.bin)";
+}
+
+// ---------------- IMPORT ----------------
+async function importModel() {
+
+  const files = document.getElementById("fileInput").files;
+
+  if (files.length < 2) {
+    document.getElementById("importStatus").innerText =
+      "Select both model.json & weights.bin!";
+    return;
+  }
+
+  model = await tf.loadLayersModel(tf.io.browserFiles(files));
+
+  document.getElementById("importStatus").innerText =
+    "Model imported successfully!";
+}
+
+// ---------------- VERIFY ----------------
+async function verifyModel() {
+
+  if (!model || originalPredictions.length === 0) {
+    document.getElementById("verifyStatus").innerText =
+      "Train model first!";
+    return;
+  }
+
+  const testValues = [2,5,8];
+  let report = "";
+  let match = true;
+
+  for (let i = 0; i < testValues.length; i++) {
+
+    const pred = model.predict(tf.tensor([testValues[i]]));
+    const imported = (await pred.data())[0];
+
+    const diff = Math.abs(originalPredictions[i] - imported);
+
+    if (diff > 0.01) match = false;
+
+    report += `x=${testValues[i]} → Original=${originalPredictions[i].toFixed(2)}, Imported=${imported.toFixed(2)}\n`;
+  }
+
+  report += match ? "\n✅ ALL MATCH" : "\n❌ MISMATCH";
+
+  document.getElementById("verifyStatus").innerText = report;
+}
+
+// ---------------- PREDICT ----------------
+async function predict() {
+
+  const value = document.getElementById("inputValue").value;
+
+  if (!model) {
+    document.getElementById("predictStatus").innerText =
+      "Load/import model first!";
+    return;
+  }
+
+  if (value === "") {
+    document.getElementById("predictStatus").innerText =
+      "Enter a value!";
+    return;
+  }
+
+  const pred = model.predict(tf.tensor([Number(value)]));
+  const result = await pred.data();
+
+  document.getElementById("predictStatus").innerText =
+    "Prediction: " + result[0].toFixed(2);
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Model Verification Dashboard</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+  <style>
+    body {
+      font-family: Arial;
+      background: linear-gradient(to right, #4facfe, #00f2fe);
+      text-align: center;
+      color: white;
+      margin-top: 20px;
+    }
+
+    .container {
+      background: rgba(0,0,0,0.35);
+      padding: 25px;
+      width: 450px;
+      margin: auto;
+      border-radius: 12px;
+      box-shadow: 0px 0px 20px rgba(0,0,0,0.4);
+    }
+
+    button, input {
+      padding: 10px;
+      margin: 5px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    button {
+      background: orange;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: darkorange;
+    }
+
+    .box {
+      margin-top: 15px;
+      padding: 10px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 8px;
+      text-align: left;
+      font-size: 14px;
+      white-space: pre-line;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h2>ML Model Dashboard</h2>
+
+  <!-- Buttons -->
+  <button onclick="trainModel()">Train</button>
+  <button onclick="loadModel()">Load</button>
+  <button onclick="verifyModel()">Verify</button>
+
+  <br>
+
+  <!-- Prediction -->
+  <input type="number" id="inputValue" placeholder="Enter value">
+  <button onclick="predict()">Predict</button>
+
+  <!-- Persistent Output Sections -->
+  <div class="box"><b>Train Status:</b><br><span id="trainStatus">Not started</span></div>
+  <div class="box"><b>Load Status:</b><br><span id="loadStatus">Not loaded</span></div>
+  <div class="box"><b>Verification:</b><br><span id="verifyStatus">Not verified</span></div>
+  <div class="box"><b>Prediction:</b><br><span id="predictStatus">No prediction</span></div>
+
+</div>
+
+<script>
+
+let model;
+let originalPredictions = [];
+
+// ---------------- TRAIN ----------------
+async function trainModel() {
+
+  document.getElementById("trainStatus").innerText = "Training...";
+
+  model = tf.sequential();
+  model.add(tf.layers.dense({units: 1, inputShape: [1]}));
+
+  model.compile({
+    loss: 'meanSquaredError',
+    optimizer: 'sgd'
+  });
+
+  const xs = tf.tensor([1,2,3,4]);
+  const ys = tf.tensor([3,5,7,9]);
+
+  await model.fit(xs, ys, {epochs: 150});
+
+  await model.save('localstorage://my-model');
+
+  // store predictions
+  const testValues = [2,5,8];
+  originalPredictions = [];
+
+  for (let val of testValues) {
+    const pred = model.predict(tf.tensor([val]));
+    originalPredictions.push((await pred.data())[0]);
+  }
+
+  document.getElementById("trainStatus").innerText =
+    "Model trained & saved successfully!";
+}
+
+// ---------------- LOAD ----------------
+async function loadModel() {
+
+  try {
+    model = await tf.loadLayersModel('localstorage://my-model');
+    document.getElementById("loadStatus").innerText =
+      "Model loaded successfully!";
+  } catch {
+    document.getElementById("loadStatus").innerText =
+      "No saved model found!";
+  }
+}
+
+// ---------------- VERIFY ----------------
+async function verifyModel() {
+
+  if (!model || originalPredictions.length === 0) {
+    document.getElementById("verifyStatus").innerText =
+      "Train & load model first!";
+    return;
+  }
+
+  const testValues = [2,5,8];
+  let resultText = "";
+  let match = true;
+
+  for (let i = 0; i < testValues.length; i++) {
+
+    const pred = model.predict(tf.tensor([testValues[i]]));
+    const loaded = (await pred.data())[0];
+
+    const diff = Math.abs(originalPredictions[i] - loaded);
+
+    if (diff > 0.01) match = false;
+
+    resultText += `x=${testValues[i]} → Original=${originalPredictions[i].toFixed(2)}, Loaded=${loaded.toFixed(2)}\n`;
+  }
+
+  resultText += match ? "\n✅ ALL MATCH" : "\n❌ MISMATCH";
+
+  document.getElementById("verifyStatus").innerText = resultText;
+}
+
+// ---------------- PREDICT ----------------
+async function predict() {
+
+  const value = document.getElementById("inputValue").value;
+
+  if (!model) {
+    document.getElementById("predictStatus").innerText =
+      "Load or train model first!";
+    return;
+  }
+
+  if (value === "") {
+    document.getElementById("predictStatus").innerText =
+      "Enter a value!";
+    return;
+  }
+
+  const pred = model.predict(tf.tensor([Number(value)]));
+  const result = await pred.data();
+
+  document.getElementById("predictStatus").innerText =
+    "Prediction: " + result[0].toFixed(2);
+}
+
+</script>
+
+</body>
+</html>

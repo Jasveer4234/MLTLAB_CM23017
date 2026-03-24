@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ML Model Deployment in Browser</title>
+
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      font-family: Arial;
+      background: linear-gradient(to right, #36d1dc, #5b86e5);
+      text-align: center;
+      color: white;
+      margin-top: 20px;
+    }
+
+    .container {
+      background: rgba(0,0,0,0.35);
+      padding: 25px;
+      border-radius: 15px;
+      width: 420px;
+      margin: auto;
+      box-shadow: 0px 0px 20px rgba(0,0,0,0.4);
+    }
+
+    h2 {
+      margin-bottom: 15px;
+    }
+
+    input, button {
+      padding: 10px;
+      margin: 8px;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+    }
+
+    button {
+      background: #ff9800;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #e68900;
+    }
+
+    canvas {
+      margin-top: 15px;
+      background: white;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h2>ML Model Deployment</h2>
+
+  <button onclick="trainModel()">Train Model</button>
+  <button onclick="loadModel()">Load Model</button>
+  <button onclick="resetApp()">Reset</button>
+
+  <br>
+
+  <input type="number" id="inputValue" placeholder="Enter value">
+
+  <br>
+
+  <button onclick="predict()">Predict</button>
+
+  <h3 id="output"></h3>
+
+  <canvas id="chart" width="350" height="200"></canvas>
+
+</div>
+
+<script>
+
+let model;
+let chart;
+
+// Initialize chart
+function initChart() {
+  const ctx = document.getElementById("chart").getContext("2d");
+
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [{
+        label: "Training Loss",
+        data: []
+      }]
+    }
+  });
+}
+
+// Train Model
+async function trainModel() {
+
+  initChart();
+
+  model = tf.sequential();
+  model.add(tf.layers.dense({units: 1, inputShape: [1]}));
+
+  model.compile({
+    loss: "meanSquaredError",
+    optimizer: "sgd"
+  });
+
+  const xs = tf.tensor([1,2,3,4]);
+  const ys = tf.tensor([3,5,7,9]);
+
+  document.getElementById("output").innerText = "Training started...";
+
+  await model.fit(xs, ys, {
+    epochs: 50,
+    callbacks: {
+      onEpochEnd: (epoch, logs) => {
+
+        chart.data.labels.push(epoch + 1);
+        chart.data.datasets[0].data.push(logs.loss);
+        chart.update();
+      }
+    }
+  });
+
+  await model.save("localstorage://my-model");
+
+  document.getElementById("output").innerText =
+    "Training completed & model saved!";
+}
+
+// Load Model
+async function loadModel() {
+  try {
+    model = await tf.loadLayersModel("localstorage://my-model");
+    document.getElementById("output").innerText = "Model loaded successfully!";
+  } catch (error) {
+    document.getElementById("output").innerText =
+      "No saved model found. Train first!";
+  }
+}
+
+// Predict
+async function predict() {
+
+  const value = document.getElementById("inputValue").value;
+
+  if (!model) {
+    document.getElementById("output").innerText =
+      "Please train or load model first!";
+    return;
+  }
+
+  if (value === "") {
+    document.getElementById("output").innerText =
+      "Please enter a value!";
+    return;
+  }
+
+  const prediction = model.predict(tf.tensor([Number(value)]));
+  const result = await prediction.data();
+
+  document.getElementById("output").innerText =
+    "Prediction: " + result[0].toFixed(2);
+}
+
+// Reset App
+function resetApp() {
+  document.getElementById("output").innerText = "";
+  document.getElementById("inputValue").value = "";
+
+  if (chart) {
+    chart.destroy();
+  }
+
+  model = null;
+}
+
+</script>
+
+</body>
+</html>
